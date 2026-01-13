@@ -16,7 +16,7 @@ CLOUDFLARED_CONFIG = r"C:\Users\MIS jap\.cloudflared\config.yml"
 TUNNEL_NAME = "hmopiors"
 
 # Commands
-BACKEND_CMD = "php artisan serve --port=8000 --host=0.0.0.0", "php artisan queue:work"
+BACKEND_CMD = "php artisan serve --port=8000 --host=0.0.0.0"
 FRONTEND_CMD = "npx serve -s dist -l 5173"
 TUNNEL_CMD = f'cloudflared tunnel --config "{CLOUDFLARED_CONFIG}" run {TUNNEL_NAME}'
 
