@@ -1,163 +1,128 @@
 """
-Auto Open HMOPI ORS Tunnel
-Location: C:\1jap\Automation\AutoOpenHmopiorsTunnel.py
-This script automatically starts all servers and exposes them through Cloudflare tunnel
+Auto Open HMOPI ORS Tunnel - Multi-Environment Version
+Location: C:\\1jap\\Automation\\AutoOpenHmopiorsTunnel.py
 """
 
 import subprocess
 import time
 import os
-import sys
+import argparse
+import shutil
+
+# ============== ARGUMENT PARSING ==============
+parser = argparse.ArgumentParser(description='Start HMOPI ORS servers')
+parser.add_argument('--env', default='development', choices=['development', 'staging', 'production'],
+                   help='Environment to start (default: development)')
+args = parser.parse_args()
+ENVIRONMENT = args.env
 
 # ============== CONFIGURATION ==============
-BACKEND_PATH = r"C:\xampp\htdocs\Online-Registration-System-Deployment\backend"
-FRONTEND_PATH = r"C:\xampp\htdocs\Online-Registration-System-Deployment\frontend"
+BASE_PATH = r"C:\xampp\htdocs\Online-Registration-System-Deployment"
+BACKEND_PATH = os.path.join(BASE_PATH, "backend")
+FRONTEND_PATH = os.path.join(BASE_PATH, "frontend")
 CLOUDFLARED_CONFIG = r"C:\Users\MIS jap\.cloudflared\config.yml"
-TUNNEL_NAME = "hmopiors"
+
+# Environment-specific configurations
+configs = {
+    'development': {
+        'backend_port': 8000,
+        'frontend_port': 5173,
+        'tunnel_name': 'hmopiors',
+        'backend_env_file': '.env.development',
+        'start_tunnel': True
+    },
+    'staging': {
+        'backend_port': 8001,      
+        'frontend_port': 5174,     
+        'tunnel_name': 'hmopiors-staging',
+        'backend_env_file': '.env.staging',
+        'start_tunnel': False      
+    },
+    'production': {
+        'backend_port': 8000,
+        'frontend_port': 5173,
+        'tunnel_name': 'hmopiors',
+        'backend_env_file': '.env.production',
+        'start_tunnel': True
+    }
+}
+
+config = configs[ENVIRONMENT]
 
 # Commands
-BACKEND_CMD = "php artisan serve --port=8000 --host=0.0.0.0"
-FRONTEND_CMD = "npx serve -s dist -l 5173"
-TUNNEL_CMD = f'cloudflared tunnel --config "{CLOUDFLARED_CONFIG}" run {TUNNEL_NAME}'
+FRONTEND_CMD = f"npm run dev -- --port {config['frontend_port']} --mode {ENVIRONMENT}"
+BACKEND_CMD = f"php artisan serve --port={config['backend_port']} --host=0.0.0.0"
+TUNNEL_CMD = f'cloudflared tunnel --config "{CLOUDFLARED_CONFIG}" run {config["tunnel_name"]}'
 
-# ============== COLORS FOR CONSOLE ==============
+# ============== COLORS ==============
 class Colors:
     HEADER = '\033[95m'
     BLUE = '\033[94m'
-    CYAN = '\033[96m'
     GREEN = '\033[92m'
     WARNING = '\033[93m'
     FAIL = '\033[91m'
     END = '\033[0m'
-    BOLD = '\033[1m'
 
 def print_banner():
-    """Print startup banner"""
     os.system('cls' if os.name == 'nt' else 'clear')
-    banner = """
-    ╔═══════════════════════════════════════════════════════════════╗
-    ║                                                               ║
-    ║     🚀 HMOPI ORS TUNNEL AUTO-STARTER 🚀                      ║
-    ║                                                               ║
-    ║     Backend  : Laravel (Port 8000)                           ║
-    ║     Frontend : Vite/Serve (Port 5173)                        ║
-    ║     Tunnel   : Cloudflared (hmopiors)                        ║
-    ║                                                               ║
-    ╚═══════════════════════════════════════════════════════════════╝
-    """
-    print(Colors.CYAN + banner + Colors.END)
+    print(Colors.HEADER + f"""
+    🚀 HMOPI ORS STARTUP: {ENVIRONMENT.upper()}
+    =========================================
+    Backend Port  : {config['backend_port']}
+    Frontend Port : {config['frontend_port']}
+    Database Env  : {config['backend_env_file']}
+    =========================================
+    """ + Colors.END)
 
-def check_path_exists(path, name):
-    """Check if the required path exists"""
-    if not os.path.exists(path):
-        print(f"{Colors.FAIL}[ERROR] {name} path not found: {path}{Colors.END}")
-        return False
-    print(f"{Colors.GREEN}[OK] {name} path verified: {path}{Colors.END}")
-    return True
+def setup_environment():
+    """Switches the .env file in the backend and clears cache"""
+    print(f"{Colors.BLUE}[Config] Setting up {ENVIRONMENT} environment...{Colors.END}")
+    
+    source = os.path.join(BACKEND_PATH, config['backend_env_file'])
+    destination = os.path.join(BACKEND_PATH, '.env')
+    
+    if os.path.exists(source):
+        try:
+            # 1. Copy file
+            shutil.copyfile(source, destination)
+            print(f"{Colors.GREEN}  ✓ Copied {config['backend_env_file']} to .env{Colors.END}")
+            
+            # 2. CLEAR CACHE (Critical Fix)
+            # We run this silently so it doesn't clutter the screen unless it fails
+            print(f"{Colors.BLUE}  > Clearing Laravel Config Cache...{Colors.END}")
+            subprocess.run(f'cd /d "{BACKEND_PATH}" && php artisan config:clear', shell=True, check=True, stdout=subprocess.DEVNULL)
+            print(f"{Colors.GREEN}  ✓ Cache Cleared Successfully{Colors.END}")
+            
+        except Exception as e:
+            print(f"{Colors.FAIL}  ✗ Error setting up env: {e}{Colors.END}")
+    else:
+        print(f"{Colors.FAIL}  ✗ Source file {config['backend_env_file']} not found!{Colors.END}")
 
-def start_backend():
-    """Start Laravel backend server"""
-    print(f"\n{Colors.BLUE}[1/3] Starting Backend Server...{Colors.END}")
-    print(f"      Path: {BACKEND_PATH}")
-    print(f"      Command: {BACKEND_CMD}")
-    
-    # Open new CMD window for backend
-    cmd = f'start "HMOPI Backend - Port 8000" cmd /k "cd /d {BACKEND_PATH} && {BACKEND_CMD}"'
-    subprocess.Popen(cmd, shell=True)
-    
-    print(f"{Colors.GREEN}      ✓ Backend server starting...{Colors.END}")
+def start_services():
+    # 1. Start Backend
+    print(f"\n{Colors.BLUE}[1/3] Starting Backend (Port: {config['backend_port']})...{Colors.END}")
+    cmd_backend = f'start "Backend ({ENVIRONMENT})" cmd /k "cd /d "{BACKEND_PATH}" && {BACKEND_CMD}"'
+    subprocess.Popen(cmd_backend, shell=True)
     time.sleep(2)
 
-def start_frontend():
-    """Start Frontend server"""
-    print(f"\n{Colors.BLUE}[2/3] Starting Frontend Server...{Colors.END}")
-    print(f"      Path: {FRONTEND_PATH}")
-    print(f"      Command: {FRONTEND_CMD}")
-    
-    # Open new CMD window for frontend
-    cmd = f'start "HMOPI Frontend - Port 5173" cmd /k "cd /d {FRONTEND_PATH} && {FRONTEND_CMD}"'
-    subprocess.Popen(cmd, shell=True)
-    
-    print(f"{Colors.GREEN}      ✓ Frontend server starting...{Colors.END}")
+    # 2. Start Frontend
+    print(f"{Colors.BLUE}[2/3] Starting Frontend (Port: {config['frontend_port']})...{Colors.END}")
+    cmd_frontend = f'start "Frontend ({ENVIRONMENT})" cmd /k "cd /d "{FRONTEND_PATH}" && {FRONTEND_CMD}"'
+    subprocess.Popen(cmd_frontend, shell=True)
     time.sleep(2)
 
-def start_tunnel():
-    """Start Cloudflare tunnel"""
-    print(f"\n{Colors.BLUE}[3/3] Starting Cloudflare Tunnel...{Colors.END}")
-    print(f"      Config: {CLOUDFLARED_CONFIG}")
-    print(f"      Tunnel: {TUNNEL_NAME}")
-    
-    # Open new CMD window for tunnel
-    cmd = f'start "HMOPI Cloudflare Tunnel" cmd /k "{TUNNEL_CMD}"'
-    subprocess.Popen(cmd, shell=True)
-    
-    print(f"{Colors.GREEN}      ✓ Cloudflare tunnel starting...{Colors.END}")
-
-def print_summary():
-    """Print summary of running services"""
-    summary = f"""
-    {Colors.GREEN}
-    ╔═══════════════════════════════════════════════════════════════╗
-    ║                    ALL SERVICES STARTED!                      ║
-    ╠═══════════════════════════════════════════════════════════════╣
-    ║                                                               ║
-    ║  📦 Backend Server:                                          ║
-    ║     └─ http://localhost:8000                                 ║
-    ║     └─ http://0.0.0.0:8000                                   ║
-    ║                                                               ║
-    ║  🌐 Frontend Server:                                         ║
-    ║     └─ http://localhost:5173                                 ║
-    ║                                                               ║
-    ║  🔒 Cloudflare Tunnel:                                       ║
-    ║     └─ Tunnel Name: {TUNNEL_NAME}                               ║
-    ║     └─ Check your Cloudflare dashboard for URLs              ║
-    ║                                                               ║
-    ╠═══════════════════════════════════════════════════════════════╣
-    ║                                                               ║
-    ║  ⚠️  DO NOT CLOSE THIS WINDOW OR THE CMD WINDOWS!            ║
-    ║                                                               ║
-    ║  To stop all services:                                       ║
-    ║  1. Close each CMD window manually, OR                       ║
-    ║  2. Press Ctrl+C in each window                              ║
-    ║                                                               ║
-    ╚═══════════════════════════════════════════════════════════════╝
-    {Colors.END}
-    """
-    print(summary)
-
-def main():
-    """Main function to run all services"""
-    print_banner()
-    
-    # Verify paths exist
-    print(f"{Colors.WARNING}Verifying paths...{Colors.END}\n")
-    
-    paths_valid = True
-    if not check_path_exists(BACKEND_PATH, "Backend"):
-        paths_valid = False
-    if not check_path_exists(FRONTEND_PATH, "Frontend"):
-        paths_valid = False
-    if not check_path_exists(CLOUDFLARED_CONFIG, "Cloudflared Config"):
-        paths_valid = False
-    
-    if not paths_valid:
-        print(f"\n{Colors.FAIL}[ERROR] Some paths are invalid. Please check the configuration.{Colors.END}")
-        input("\nPress Enter to exit...")
-        sys.exit(1)
-    
-    print(f"\n{Colors.GREEN}All paths verified successfully!{Colors.END}")
-    print(f"\n{Colors.WARNING}Starting all services...{Colors.END}")
-    
-    # Start all services
-    start_backend()
-    start_frontend()
-    start_tunnel()
-    
-    # Print summary
-    print_summary()
-    
-    # Keep the script running
-    input("\nPress Enter to exit this window (services will keep running)...")
+    # 3. Start Tunnel (if enabled)
+    if config['start_tunnel']:
+        print(f"{Colors.BLUE}[3/3] Starting Tunnel...{Colors.END}")
+        cmd_tunnel = f'start "Cloudflare Tunnel" cmd /k "{TUNNEL_CMD}"'
+        subprocess.Popen(cmd_tunnel, shell=True)
+    else:
+        print(f"{Colors.WARNING}[3/3] Tunnel skipped for this environment.{Colors.END}")
 
 if __name__ == "__main__":
-    main()
+    print_banner()
+    setup_environment()
+    start_services()
+    print(f"\n{Colors.GREEN}✔ All services requested.{Colors.END}")
+    # Removed the input() wait so the script finishes cleanly for automation
+    # input("\nPress Enter to close this launcher...") 

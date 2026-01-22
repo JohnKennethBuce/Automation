@@ -20,7 +20,7 @@ title HMOPI ORS Tunnel Starter
 cd /d "C:\1jap\Automation"
 
 :: Run the Python script
-python AutoOpenHmopiorsTunnel.py
+python AutoOpenHmopiorsTunnelorig.py
 
 :: Pause if there's an error
 if %errorLevel% neq 0 (
