@@ -36,7 +36,7 @@ configs = {
         'frontend_port': 5174,     
         'tunnel_name': 'hmopiors-staging',
         'backend_env_file': '.env.staging',
-        'start_tunnel': False      
+        'start_tunnel': True      
     },
     'production': {
         'backend_port': 8000,
