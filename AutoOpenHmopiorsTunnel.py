@@ -29,29 +29,35 @@ configs = {
         'frontend_port': 5173,
         'tunnel_name': 'hmopiors',
         'backend_env_file': '.env.development',
-        'start_tunnel': True
+        'start_tunnel': True,
+        'frontend_cmd': f"npm run dev -- --port 5173"
     },
     'staging': {
-        'backend_port': 8001,      
-        'frontend_port': 5174,     
-        'tunnel_name': 'hmopiors-staging',
+        # CRITICAL FIX: Must match config.yml ports (8000/5173)
+        'backend_port': 8000,      
+        'frontend_port': 5173,     
+        'tunnel_name': 'hmopiors',
         'backend_env_file': '.env.staging',
-        'start_tunnel': True      
+        'start_tunnel': True,
+        # CRITICAL FIX: Serve the BUILD folder for Staging (like your old script)
+        'frontend_cmd': "npx serve -s dist -l 5173"     
     },
     'production': {
         'backend_port': 8000,
         'frontend_port': 5173,
         'tunnel_name': 'hmopiors',
         'backend_env_file': '.env.production',
-        'start_tunnel': True
+        'start_tunnel': True,
+        'frontend_cmd': "npx serve -s dist -l 5173"
     }
 }
 
 config = configs[ENVIRONMENT]
 
 # Commands
-FRONTEND_CMD = f"npm run dev -- --port {config['frontend_port']} --mode {ENVIRONMENT}"
+# Backend listens on 0.0.0.0 so Cloudflare can find it
 BACKEND_CMD = f"php artisan serve --port={config['backend_port']} --host=0.0.0.0"
+FRONTEND_CMD = config['frontend_cmd']
 TUNNEL_CMD = f'cloudflared tunnel --config "{CLOUDFLARED_CONFIG}" run {config["tunnel_name"]}'
 
 # ============== COLORS ==============
@@ -71,6 +77,7 @@ def print_banner():
     Backend Port  : {config['backend_port']}
     Frontend Port : {config['frontend_port']}
     Database Env  : {config['backend_env_file']}
+    Tunnel Name   : {config['tunnel_name']}
     =========================================
     """ + Colors.END)
 
@@ -87,8 +94,7 @@ def setup_environment():
             shutil.copyfile(source, destination)
             print(f"{Colors.GREEN}  ✓ Copied {config['backend_env_file']} to .env{Colors.END}")
             
-            # 2. CLEAR CACHE (Critical Fix)
-            # We run this silently so it doesn't clutter the screen unless it fails
+            # 2. CLEAR CACHE
             print(f"{Colors.BLUE}  > Clearing Laravel Config Cache...{Colors.END}")
             subprocess.run(f'cd /d "{BACKEND_PATH}" && php artisan config:clear', shell=True, check=True, stdout=subprocess.DEVNULL)
             print(f"{Colors.GREEN}  ✓ Cache Cleared Successfully{Colors.END}")
@@ -124,5 +130,3 @@ if __name__ == "__main__":
     setup_environment()
     start_services()
     print(f"\n{Colors.GREEN}✔ All services requested.{Colors.END}")
-    # Removed the input() wait so the script finishes cleanly for automation
-    # input("\nPress Enter to close this launcher...") 
